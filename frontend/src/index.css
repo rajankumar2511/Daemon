@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 🔥 GLOBAL DARK THEME */
+html, body {
+  @apply bg-black text-white;
+}
+
+/* Remove default margin/padding issues */
+body {
+  @apply m-0 p-0;
+}
+
+/* Scrollbar (lightweight, no heavy CSS) */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 10px;
+}
