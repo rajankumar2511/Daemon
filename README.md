@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Premium Message Deletion Feature
 
 This document outlines the implementation of the bulk message deletion feature.
@@ -68,3 +69,6 @@ In case of a failure during the deletion process:
 ### Integration Tests (Socket)
 - `test('should emit messages-deleted to all chat participants')`
 - `test('should handle multi-server propagation via Redis')`
+=======
+# Daemon
+>>>>>>> d202cc9837e28789bb76369a77da5b1e876302af
