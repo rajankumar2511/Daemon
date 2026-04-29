@@ -300,5 +300,5 @@ daemon/
 <div align="center"> 
   <sub>Built with ⚡, ☕, and distributed systems theory.</sub> 
   <br /> 
-  <sub>© 2025 Rajan Kumar | MIT License</sub> 
+  <sub>© 2026 Rajan Kumar | MIT License</sub> 
 </div> 
