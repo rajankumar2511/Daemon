@@ -6,7 +6,7 @@
   <a href="https://daemon-frontend-one.vercel.app" target="_blank"> 
     <img src="https://img.shields.io/badge/LIVE_DEMO-00C853?style=for-the-badge&logo=vercel&logoColor=white" alt="Live Demo" /> 
   </a> 
-  <a href="https://github.com/rajankuamr2511/Daemon" target="_blank"> 
+  <a href="https://github.com/rajankumar2511/Daemon" target="_blank"> 
     <img src="https://img.shields.io/badge/CODE-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub" /> 
   </a> 
   <a href="https://www.linkedin.com/in/rajan-kumar-2506x" target="_blank"> 
@@ -293,7 +293,7 @@ daemon/
 
 **Rajan Kumar**   
 📧 [rajankumarsknc2003@gmail.com](mailto:rajankumarsknc2003@gmail.com)   
-🔗 [LinkedIn](https://www.linkedin.com/in/rajan-kumar-2506x)  · [GitHub](https://github.com/rajankuamr2511)  
+🔗 [LinkedIn](https://www.linkedin.com/in/rajan-kumar-2506x)  · [GitHub](https://github.com/rajankumar2511)  
 
 --- 
 
