@@ -37,6 +37,10 @@ app.use("/api/friends", friendRoutes);
 app.use("/api/chats", chatRoutes);
 app.use("/api/social", socialroutes);
 
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "ok" });
+});
+
 // ✅ Port (auto for prod, fixed for local)
 const PORT = process.env.PORT || 5000;
 
