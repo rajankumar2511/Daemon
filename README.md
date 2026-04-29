@@ -1,5 +1,5 @@
 <div align="center"> 
-  <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=30&duration=3000&pause=500&color=#8b5cf6&center=true&vCenter=true&width=500&height=70&lines=%F0%9F%94%82+DAEMON;Real-Time+Messaging+%26+WebRTC" alt="Daemon Typing SVG" /> 
+    <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=30&duration=3000&pause=500&color=8B5CF6&center=true&vCenter=true&width=500&height=70&lines=%F0%9F%94%82+DAEMON;Real-Time+Messaging+%26+WebRTC" alt="Daemon Typing SVG" /> 
   <br /> 
   <strong>Production-Grade • Distributed • Sub-100ms Latency</strong> 
   <br /><br /> 
