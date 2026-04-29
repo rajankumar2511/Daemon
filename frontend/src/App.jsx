@@ -17,8 +17,9 @@ import { getMe } from "./lib/api.js";
 import Discover from "./PagesSidebar/Discover.jsx";
 import ProfilePage from "./PagesSidebar/ProfilePage.jsx";
 import Discoverff from "./PagesSidebar/Discoverff.jsx";
-import { CallProvider } from "./context/CallContext.jsx";
-import CallModal from "./components/CallModal.jsx";
+import { CallProvider } from "./context/CallContext";
+import IncomingCallModal from "./components/IncomingCallModal";
+import ActiveCallOverlay from "./components/ActiveCallOverlay";
 
 
 // ==========================================
@@ -154,8 +155,8 @@ function App() {
   }, []);
 
   return (
-    <CallProvider>
-      <div className="App">
+    <div className="App">
+      <CallProvider>
         <ToastContainer
           position="top-right"
           autoClose={3000}
@@ -168,31 +169,31 @@ function App() {
           pauseOnHover
           theme="dark"
         />
+         <IncomingCallModal />
+         <ActiveCallOverlay />
 
-        <CallModal />
-
-        <Routes>
-        {/* Public routes */}
-        <Route path="/" element={<PublicRoute><Navigate to="/auth" replace /></PublicRoute>} />
-        <Route path="/auth" element={<PublicRoute><Auth /></PublicRoute>} />
-        <Route path="/signup" element={<PublicRoute><SignUp /></PublicRoute>} />
-        <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-        {/* Protected routes */}
-        <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
-        <Route path="/chats" element={<ProtectedRoute><Home /></ProtectedRoute>} />
-        <Route path="/chat/:chatId" element={<ProtectedRoute><Home /></ProtectedRoute>} />
-        <Route path="/about" element={<ProtectedRoute><About /></ProtectedRoute>} />
-        <Route path="/friends" element={<ProtectedRoute><FriendsPage /></ProtectedRoute>} />
-        <Route path="/call" element={<ProtectedRoute><Call /></ProtectedRoute>} />
-        <Route path="/requests" element={<ProtectedRoute><FriendRequests /></ProtectedRoute>} />
-        <Route path="/discover" element={<ProtectedRoute><Discover /></ProtectedRoute>} />
-        <Route path="/profile/:userId" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-        <Route path="/discoverff/:userId" element={<ProtectedRoute><Discoverff /></ProtectedRoute>} />
-        {/* 404 catch all */}
-        <Route path="*" element={<Navigate to="/home" replace />} />
-      </Routes>
+         <Routes>
+          {/* Public routes */}
+          <Route path="/" element={<PublicRoute><Navigate to="/auth" replace /></PublicRoute>} />
+          <Route path="/auth" element={<PublicRoute><Auth /></PublicRoute>} />
+          <Route path="/signup" element={<PublicRoute><SignUp /></PublicRoute>} />
+          <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+          {/* Protected routes */}
+          <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+          <Route path="/chats" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+          <Route path="/chat/:chatId" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+          <Route path="/about" element={<ProtectedRoute><About /></ProtectedRoute>} />
+          <Route path="/friends" element={<ProtectedRoute><FriendsPage /></ProtectedRoute>} />
+          <Route path="/call" element={<ProtectedRoute><Call /></ProtectedRoute>} />
+          <Route path="/requests" element={<ProtectedRoute><FriendRequests /></ProtectedRoute>} />
+          <Route path="/discover" element={<ProtectedRoute><Discover /></ProtectedRoute>} />
+          <Route path="/profile/:userId" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+          <Route path="/discoverff/:userId" element={<ProtectedRoute><Discoverff /></ProtectedRoute>} />
+          {/* 404 catch all */}
+          <Route path="*" element={<Navigate to="/home" replace />} />
+        </Routes>
+      </CallProvider>
     </div>
-    </CallProvider>
   );
 }
 

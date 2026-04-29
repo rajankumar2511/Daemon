@@ -53,10 +53,11 @@ const ChatHeader = ({ otherUser, onAudioCall, onVideoCall, isMobile = false, onB
   const handleAudioCall = () => {
     if (!userId) return;
 
-    console.log("📞 Audio call to:", otherUser?.fullName);
+    console.log("[CHAT HEADER] Initiating audio call to:", otherUser?.fullName);
 
     callUser({
       to: userId,
+      user: otherUser,
       type: "audio",
     });
 
@@ -66,10 +67,11 @@ const ChatHeader = ({ otherUser, onAudioCall, onVideoCall, isMobile = false, onB
   const handleVideoCall = () => {
     if (!userId) return;
 
-    console.log("🎥 Video call to:", otherUser?.fullName);
+    console.log("[CHAT HEADER] Initiating video call to:", otherUser?.fullName);
 
     callUser({
       to: userId,
+      user: otherUser,
       type: "video",
     });
 
@@ -362,7 +364,7 @@ const ChatHeader = ({ otherUser, onAudioCall, onVideoCall, isMobile = false, onB
         </div>
       </div>
 
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style >{`
         @keyframes slideDown {
           from {
             opacity: 0;
@@ -377,7 +379,7 @@ const ChatHeader = ({ otherUser, onAudioCall, onVideoCall, isMobile = false, onB
         .animate-slideDown {
           animation: slideDown 0.2s ease-out;
         }
-      ` }} />
+      `}</style>
     </div>
   );
 };

@@ -300,7 +300,7 @@ const HomePage = () => {
         isMobile={isMobile}
       />
 
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style >{`
         @keyframes fadeIn {
           from {
             opacity: 0;
@@ -313,7 +313,7 @@ const HomePage = () => {
         .animate-fadeIn {
           animation: fadeIn 0.3s ease-in-out;
         }
-      ` }} />
+      `}</style>
     </div>
   );
 };

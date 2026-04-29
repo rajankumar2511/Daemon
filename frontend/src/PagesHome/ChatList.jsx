@@ -241,7 +241,7 @@ const ChatList = ({
       </div>
 
       {/* Custom Scrollbar Styles */}
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style >{`
         .custom-scrollbar::-webkit-scrollbar {
           width: 4px;
         }
@@ -272,7 +272,7 @@ const ChatList = ({
         .animate-pulse {
           animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
-      ` }} />
+      `}</style>
     </div>
   );
 };

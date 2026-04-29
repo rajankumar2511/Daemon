@@ -3,16 +3,26 @@ import { useCall } from "../context/CallContext";
 import { getMyFriends } from "../lib/api";
 import { toast } from "react-toastify";
 import { onUserOnline, onUserOffline, offEvent } from "../Sockets/Socket";
+import { Phone, PhoneOff, Video, VideoOff } from "lucide-react";
 
 const VideoPage = () => {
-  const [friends, setFriends] = useState([]);
+    const [friends, setFriends] = useState([]);
   const [loading, setLoading] = useState(true);
   const [onlineUsers, setOnlineUsers] = useState(new Set());
 
   const {
+    myVideoRef,
+    remoteVideoRef,
+    incomingCall,
+    callAccepted,
     callUser,
+    answerCall,
+    endCall,
     callError,
+    isConnecting,
     setCallError,
+    activeUser,
+    setActiveUser,
   } = useCall();
 
   // ✅ Load friends
@@ -59,9 +69,6 @@ const VideoPage = () => {
       offEvent("user-offline", handleUserOffline);
     };
   }, []);
-
-  const caller =
-    incomingCall && friends.find((f) => f._id === incomingCall.from);
 
   if (loading) {
     return (
@@ -140,8 +147,8 @@ const VideoPage = () => {
                 <div className="flex gap-2">
                   <button
                     onClick={() => {
-                      console.log("[VIDEO PAGE] Initiating audio call to:", f._id);
-                      callUser({ to: f._id, type: "audio" });
+                      console.log("[VIDEO PAGE] Initiating audio call to:", f.fullName);
+                      callUser({ to: f._id, user: f, type: "audio" });
                     }}
                     className="px-2 py-1 bg-[#1a1a1a] rounded hover:bg-[#222]"
                   >
@@ -149,8 +156,8 @@ const VideoPage = () => {
                   </button>
                   <button
                     onClick={() => {
-                      console.log("[VIDEO PAGE] Initiating video call to:", f._id);
-                      callUser({ to: f._id, type: "video" });
+                      console.log("[VIDEO PAGE] Initiating video call to:", f.fullName);
+                      callUser({ to: f._id, user: f, type: "video" });
                     }}
                     className="px-2 py-1 bg-[#1a1a1a] rounded hover:bg-[#222]"
                   >

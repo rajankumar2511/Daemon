@@ -470,7 +470,7 @@ const ProfilePage = () => {
         </div>
       )}
 
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style >{`
         @keyframes fadeIn {
           from {
             opacity: 0;
@@ -498,7 +498,7 @@ const ProfilePage = () => {
         .animate-slideUp {
           animation: slideUp 0.3s ease-out;
         }
-      ` }} />
+      `}</style>
     </div>
   );
 };

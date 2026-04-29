@@ -1,11 +1,12 @@
 /* ===================== Messages.jsx ===================== */
 
 import { useRef, useEffect, useState, useCallback } from "react";
-import { Send, Paperclip, Trash2, X, CheckCircle, Smile, Image, Mic, File, MoreHorizontal, Download, Eye, Check, CheckCheck } from "lucide-react";
+import { Send, Paperclip, Trash2, X, CheckCircle, Smile, Image, Mic, File, MoreHorizontal, Download } from "lucide-react";
 import { toast } from "react-toastify";
 import ChatHeader from "./ChatHeader";
 import { emitTyping, emitStopTyping, socket } from "../Sockets/Socket";
-import { onMessageSent } from "../Sockets/Socket";
+import apiClient from "../lib/apiClient";
+import { getCachedFile, setCachedFile } from "../utils/fileCache";
 
 const Messages = ({
   me,
@@ -26,90 +27,190 @@ const Messages = ({
 }) => {
   const endRef = useRef(null);
   const fileRef = useRef(null);
+  const lastSentFileRef = useRef(null); // ✅ Track last sent file for blob storage
+  const ramCacheRef = useRef({}); // ✅ Persistent RAM cache (survives re-renders!)
   const [selectedIds, setSelectedIds] = useState([]);
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isFileUploading, setIsFileUploading] = useState(false);
-  const [localFileBlobUrls, setLocalFileBlobUrls] = useState({}); // ✅ Store blob URLs by messageId
 
   const otherUser = selectedChat ? getOtherUser(selectedChat) : null;
 
-  /* ================= FILE VIEW HANDLER (FOR SENDER) ================= */
-  const handleFileView = async (e, messageId, fileData) => {
+  /* ================= FILE VIEW HANDLER (FOR BOTH SENDER & RECEIVER WITH PERSISTENT CACHE) ================= */
+  const handleFileView = async (e, messageId, fileData, msgObj = null) => {
     e.preventDefault();
 
+    console.log("🔍 [handleFileView] Called with:", {
+      messageId,
+      fileName: fileData?.name,
+      msgObjId: msgObj?._id,
+      isSender: msgObj?.sender?._id?.toString() === me?._id?.toString()
+    });
+
     try {
-      // ✅ 1. Already cached
-      const localBlob = localFileBlobUrls[messageId];
-      if (localBlob) {
-        window.open(localBlob, "_blank", "noopener,noreferrer");
+      // ✅ 1. Try RAM cache first using useRef (persists across re-renders!)
+      const cacheKey = messageId || msgObj?._id;
+      const ramCachedBlob = ramCacheRef.current[cacheKey];
+
+      if (ramCachedBlob) {
+        console.log("⚡ [RAM-REF] Opening from persistent session cache:", fileData.name);
+        const blobUrl = URL.createObjectURL(ramCachedBlob);
+        const newWindow = window.open(blobUrl, '_blank');
+
+        if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+          toast.error("Popup blocked! Please allow popups to view files.");
+        } else {
+          toast.success(`Viewing: ${fileData.name}`);
+        }
         return;
       }
 
-      // ❌ No URL
-      if (!fileData?.url) {
-        toast.error("File not available");
-        return;
+      console.log("📂 RAM cache miss for messageId:", messageId, "checking IndexedDB...");
+      console.log("🔑 Cache key:", cacheKey);
+
+      // ✅ 2. Check IndexedDB for persistent cached blob (survives refresh)
+      if (cacheKey) {
+        const cachedBlob = await getCachedFile(cacheKey);
+        if (cachedBlob) {
+          console.log("✅ [IndexedDB] Cache HIT - Opening from persistent storage:", fileData.name);
+          
+          // ✅ Store in RAM-REF for this session (for instant access on next click, persists across re-renders)
+          ramCacheRef.current[cacheKey] = cachedBlob;
+          console.log("💾 Stored in RAM-REF cache, total cached:", Object.keys(ramCacheRef.current).length);
+
+          const blobUrl = URL.createObjectURL(cachedBlob);
+          const newWindow = window.open(blobUrl, '_blank');
+
+          if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+            toast.error("Popup blocked! Please allow popups to view files.");
+          } else {
+            toast.success(`Viewing: ${fileData.name}`);
+          }
+          return;
+        }
       }
 
-      // ✅ 2. Fetch from cloud (first time)
-      const response = await fetch(fileData.url);
+      // ✅ 3. Not in cache -> Fetch from server and save to IndexedDB
+      console.log("🔄 Cache MISS - fetching from server for messageId:", cacheKey);
 
-      if (!response.ok) {
-        throw new Error("Failed to fetch file");
+      let downloadUrl = fileData.downloadUrl || `/chats/${selectedChat._id}/download/${fileData.publicId}`;
+      if (downloadUrl.includes('/chat/') && !downloadUrl.includes('/chats/')) {
+        downloadUrl = downloadUrl.replace('/chat/', '/chats/');
+      }
+      if (downloadUrl.startsWith('http')) {
+        try {
+          const urlObj = new URL(downloadUrl);
+          downloadUrl = urlObj.pathname.replace('/api', '');
+        } catch (e) {
+          downloadUrl = `/chats/${selectedChat._id}/download/${fileData.publicId}`;
+        }
       }
 
-      const blob = await response.blob();
+      console.log("📥 Fetching from:", downloadUrl);
+      const viewToast = toast.info(`Loading ${fileData.name}...`, { autoClose: false, closeButton: false });
+
+      const response = await apiClient.get(downloadUrl, {
+        responseType: 'blob',
+        withCredentials: true
+      });
+
+      const blob = response.data;
+      console.log("✅ File fetched successfully, size:", (blob.size / 1024 / 1024).toFixed(2), "MB");
+
+      // ✅ Save to IndexedDB for future views (WAIT for save to complete)
+      if (cacheKey) {
+        try {
+          await setCachedFile(cacheKey, blob);
+          console.log("✅✅ [IndexedDB] File successfully saved for cacheKey:", cacheKey);
+        } catch (cacheErr) {
+          console.error("❌ [IndexedDB] Failed to save file to IndexedDB:", cacheErr);
+        }
+
+        // ✅ Also store in RAM-REF cache for this session
+        ramCacheRef.current[cacheKey] = blob;
+        console.log("💾 Stored in RAM-REF cache, total cached:", Object.keys(ramCacheRef.current).length);
+      } else {
+        console.warn("⚠️ No cacheKey available - file won't be cached!");
+      }
+
+      // ✅ Open in new tab
       const blobUrl = URL.createObjectURL(blob);
+      const newWindow = window.open(blobUrl, '_blank');
 
-      // ✅ 3. Store locally
-      setLocalFileBlobUrls(prev => ({
-        ...prev,
-        [messageId]: blobUrl
-      }));
+      toast.dismiss(viewToast);
 
-      // ✅ 4. Open
-      window.open(blobUrl, "_blank", "noopener,noreferrer");
+      if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+        toast.error("Popup blocked! Please allow popups to view files.");
+      } else {
+        toast.success(`Viewing: ${fileData.name}`);
+      }
 
     } catch (error) {
-      console.error("File view error:", error);
-
-      // fallback
-      if (fileData?.url) {
-        window.open(fileData.url, "_blank", "noopener,noreferrer");
-      } else {
-        toast.error("Failed to open file");
-      }
+      console.error("❌❌ View error:", error);
+      toast.error("Failed to open file. Please try again.");
     }
   };
+
   /* ================= FILE DOWNLOAD HANDLER (FOR RECEIVER) ================= */
-  const handleFileDownload = (e, fileData) => {
+  const handleFileDownload = async (e, fileData) => {
     e.preventDefault();
     if (!fileData) return;
 
-    try {
-      // ✅ Priority: use backend endpoint for CORS-safe download
-      const downloadUrl = fileData.downloadUrl || fileData.url;
+    const downloadToast = toast.info(
+      <div className="flex items-center gap-2">
+        <div className="w-4 h-4 border-2 border-gray-400 border-t-white rounded-full animate-spin"></div>
+        <span>Downloading {fileData.name}...</span>
+      </div>,
+      { autoClose: false, closeButton: false }
+    );
 
-      if (!downloadUrl) {
-        toast.error("Download URL not available");
-        return;
+    try {
+      // ✅ Normalize download URL: ensure it starts with /chats/ and doesn't have double /api
+      let downloadUrl = fileData.downloadUrl || `/chats/${selectedChat._id}/download/${fileData.publicId}`;
+      
+      // If it's an old URL with singular /chat/, fix it
+      if (downloadUrl.includes('/chat/') && !downloadUrl.includes('/chats/')) {
+        downloadUrl = downloadUrl.replace('/chat/', '/chats/');
+      }
+      
+      // If it's absolute, make it relative to baseURL
+      if (downloadUrl.startsWith('http')) {
+        try {
+          const urlObj = new URL(downloadUrl);
+          downloadUrl = urlObj.pathname.replace('/api', '');
+        } catch (e) {
+          console.warn("Invalid absolute downloadUrl, using fallback");
+          downloadUrl = `/chats/${selectedChat._id}/download/${fileData.publicId}`;
+        }
       }
 
-      // ✅ Create a temporary link and trigger download
-      const link = document.createElement("a");
-      link.href = downloadUrl;
-      link.download = fileData.name || "file";
-      link.style.display = "none";
+      console.log("📥 Attempting download from:", downloadUrl);
 
+      // ✅ Use apiClient to handle authentication and get the file as a blob
+      const response = await apiClient.get(downloadUrl, {
+        responseType: "blob",
+        withCredentials: true
+      });
+
+      // ✅ response.data is already a Blob
+      const blob = response.data;
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", fileData.name || "file");
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
 
-      toast.success(`Downloading: ${fileData.name}`);
+      // Cleanup
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.dismiss(downloadToast);
+      toast.success(`Downloaded: ${fileData.name}`);
     } catch (error) {
       console.error("Download error:", error);
-      toast.error("Failed to download file");
+      toast.dismiss(downloadToast);
+      toast.error("Failed to download file. Please try again.");
     }
   };
 
@@ -117,36 +218,58 @@ const Messages = ({
   useEffect(() => {
     if (!isSelectMode) {
       endRef.current?.scrollIntoView({
-        behavior: "auto"
+        behavior: messages.length < 20 ? "smooth" : "auto"
       });
     }
   }, [messages, typing, isSelectMode]);
 
   useEffect(() => {
     const handler = ({ tempId, message }) => {
+      console.log("📥 Received message-sent:", { tempId, msgId: message._id, type: message.type });
+
       setMessages(prev =>
         prev.map(msg =>
           msg.tempId === tempId
-            ? { ...message, status: "sent" }
+            ? { ...message, status: message.status || "sent" }
             : msg
         )
       );
 
-      if (message.type === "file") {
-        setLocalFileBlobUrls(prev => {
-          // ✅ find blob using tempId
-          const blob = prev[tempId];
+      // ✅ Robust ID comparison (handle string vs object)
+      const senderId = message.sender?._id || message.sender;
+      const myId = me?._id || me;
+      const isMyMessage = senderId?.toString() === myId?.toString();
 
-          if (!blob) return prev;
+      // ✅ If it's a file message, store the blob locally AND to IndexedDB for sender
+      if (message.type === "file" && isMyMessage) {
+        console.log("💾 Caching local file for real ID:", message._id, "tempId:", tempId);
+        
+        // ✅ Try to get blob from lastSentFileRef first (most reliable), then fallback to tempId mapping
+        let fileBlob = lastSentFileRef.current;
+        
+        if (!fileBlob && tempId) {
+          fileBlob = ramCacheRef.current[tempId];
+          console.log(`📂 Found blob in RAM-REF cache for tempId: ${tempId}`, fileBlob ? "✅" : "❌");
+        }
 
-          const updated = { ...prev };
+        if (!fileBlob) {
+          console.warn("⚠️ No file blob found for caching! lastSentFileRef:", !!lastSentFileRef.current, "tempId blob:", !!(tempId && ramCacheRef.current[tempId]));
+          return;
+        }
 
-          // ✅ move temp → real
-          updated[message._id] = blob;
-          delete updated[tempId];
+        // ✅ Keep in RAM-REF cache AND save to IndexedDB for persistence
+        ramCacheRef.current[message._id] = fileBlob;
+        if (tempId) {
+          ramCacheRef.current[tempId] = fileBlob;
+        }
+        console.log("✅ Stored in RAM-REF, total cached:", Object.keys(ramCacheRef.current).length);
 
-          return updated;
-        });
+        // ✅ Async save to IndexedDB (fire and forget, but with logging)
+        setCachedFile(message._id, fileBlob)
+          .then(() => console.log("✅ [IndexedDB] Successfully cached file for messageId:", message._id))
+          .catch(err => console.error("❌ [IndexedDB] Failed to cache file:", message._id, err));
+
+        lastSentFileRef.current = null; // Clear after use
       }
     };
 
@@ -155,7 +278,7 @@ const Messages = ({
     return () => {
       socket.off("message-sent", handler);
     };
-  }, []);
+  }, [me, setMessages]); // Added dependencies to avoid stale closure
 
   /* ================= SELECTION LOGIC ================= */
   const toggleSelect = (id) => {
@@ -177,10 +300,11 @@ const Messages = ({
 
   const handleSelectAll = useCallback(() => {
     if (!messages.length) return;
+    const myId = me?._id || me;
     const allIds = messages
       .filter(m => {
-        const senderId = typeof m.sender === "object" ? m.sender._id : m.sender;
-        return senderId === me?._id && !m.isDeleted;
+        const senderId = m.sender?._id || m.sender;
+        return senderId?.toString() === myId?.toString() && !m.isDeleted;
       })
       .map(m => m._id);
     setSelectedIds(allIds);
@@ -311,8 +435,7 @@ const Messages = ({
 
     try {
       emitStopTyping({ to: otherUser?._id, chatId: selectedChat._id });
-      const tempId = `temp-${Date.now()}`;
-      await sendMessage(tempId);
+      await sendMessage();
     } catch (err) {
       console.error("[Messages] Send error:", err);
     }
@@ -349,20 +472,27 @@ const Messages = ({
       setIsFileUploading(true);
       console.log("📤 Uploading file:", file.name, `(${(file.size / 1024 / 1024).toFixed(2)}MB)`);
 
-      // ✅ Create blob URL from file BEFORE sending
-      const blobUrl = URL.createObjectURL(file);
+      const tempId = `temp-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-      // ✅ create SAME tempId
-      const tempId = `temp-${Date.now()}`;
+      // ✅ Store the file blob in RAM-REF cache immediately using tempId
+      // This ensures the "View" button works even before the server responds
+      ramCacheRef.current[tempId] = file;
+      console.log("📝 Stored temp file in RAM-REF cache:", tempId, "total cached:", Object.keys(ramCacheRef.current).length);
 
-      // ✅ store blob WITH tempId
-      setLocalFileBlobUrls(prev => ({
-        ...prev,
-        [tempId]: blobUrl
-      }));
+      const uploadToast = toast.info(
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 border-2 border-gray-400 border-t-white rounded-full animate-spin"></div>
+          <span>Uploading {file.name}...</span>
+        </div>,
+        { autoClose: false, closeButton: false }
+      );
 
       await handleFileSend(file, tempId);
 
+      // ✅ Also keep it in ref as a backup for the socket listener
+      lastSentFileRef.current = file;
+
+      toast.dismiss(uploadToast);
       toast.success(`File sent: ${file.name}`, { autoClose: 2000 });
       e.target.value = '';
     } catch (err) {
@@ -375,43 +505,20 @@ const Messages = ({
       setIsFileUploading(false);
     }
   };
+
   const getMessageStatusUI = (status) => {
-    if (status === "sending") {
-      return (
-        <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
-      );
-    }
-
     if (status === "sent") {
-      return (
-        <Check
-          size={16}
-          strokeWidth={2.8}
-          className="text-gray-300 drop-shadow-[0_0_2px_rgba(255,255,255,0.4)]"
-        />
-      );
+      return <span className="text-gray-400 text-xs">✓</span>;
     }
-
+    if (status === "sending") {
+      return <div className="w-3 h-3 border-2 border-gray-500 border-t-gray-300 rounded-full animate-spin"></div>;
+    }
     if (status === "delivered") {
-      return (
-        <CheckCheck
-          size={16}
-          strokeWidth={2.8}
-          className="text-gray-300 drop-shadow-[0_0_2px_rgba(255,255,255,0.4)]"
-        />
-      );
+      return <span className="text-gray-400 text-xs">✓✓</span>;
     }
-
     if (status === "seen") {
-      return (
-        <CheckCheck
-          size={16}
-          strokeWidth={3}
-          className="text-green-400 drop-shadow-[0_0_4px_rgba(59,130,246,0.8)]"
-        />
-      );
+      return <span className="text-blue-400 text-xs">✓✓</span>;
     }
-
     return null;
   };
 
@@ -420,28 +527,6 @@ const Messages = ({
       e.preventDefault();
       handleSend();
     }
-  };
-
-  const formatFileName = (name) => {
-    if (!name) return "File";
-
-    const maxPerLine = 10;
-    const maxLines = 2;
-
-    const parts = [];
-
-    for (let i = 0; i < name.length; i += maxPerLine) {
-      parts.push(name.slice(i, i + maxPerLine));
-    }
-
-    const visible = parts.slice(0, maxLines);
-
-    if (parts.length > maxLines) {
-      visible[maxLines - 1] =
-        visible[maxLines - 1].slice(0, maxPerLine - 3) + "...";
-    }
-
-    return visible;
   };
 
   /* ================= EMPTY STATE ================= */
@@ -503,151 +588,125 @@ const Messages = ({
       )}
 
       {/* MESSAGES AREA */}
-      <div className={`flex-1 overflow-y-auto p-4 space-y-4 transition-opacity duration-300 ${isDeleting ? 'opacity-50' : 'opacity-100'} custom-scrollbar`}>        {messages.length === 0 ? (
-        <div className="flex items-center justify-center h-full">
-          <div className="text-center">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-r from-purple-500/10 to-blue-500/10 flex items-center justify-center">
-              <svg className="w-8 h-8 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
+      <div className={`flex-1 overflow-y-auto p-4 space-y-4 transition-all duration-300 ${isDeleting ? 'opacity-50' : 'opacity-100'} custom-scrollbar`}>
+        {messages.length === 0 ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-r from-purple-500/10 to-blue-500/10 flex items-center justify-center">
+                <svg className="w-8 h-8 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+              </div>
+              <p className="text-gray-400">No messages yet</p>
+              <p className="text-sm text-gray-600 mt-1">Send a message to start the conversation</p>
             </div>
-            <p className="text-gray-400">No messages yet</p>
-            <p className="text-sm text-gray-600 mt-1">Send a message to start the conversation</p>
           </div>
-        </div>
-      ) : (
-        messages.map((msg, idx) => {
-          if (!msg) return null;
+        ) : (
+          messages.map((msg, idx) => {
+            if (!msg) return null;
 
-          const senderId = typeof msg.sender === "object" ? msg.sender._id : msg.sender;
-          const isMe = senderId === me?._id;
-          const isSelected = selectedIds.includes(msg._id);
-          const isCached = !!localFileBlobUrls[msg._id];
-          const showDate = idx === 0 || (new Date(msg.createdAt).toDateString() !== new Date(messages[idx - 1]?.createdAt).toDateString());
+            const senderId = msg.sender?._id || msg.sender;
+            const myId = me?._id || me;
+            const isMe = senderId?.toString() === myId?.toString();
+            const isSelected = selectedIds.includes(msg._id);
 
-          return (
-            <div
-              key={msg._id ? msg._id.toString() : `temp-${msg.tempId}`}
-              className="group relative"              >
-              {showDate && (
-                <div className="text-center my-6">
-                  <span className="text-xs text-gray-500 bg-white/5 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/10">
-                    {new Date(msg.createdAt).toLocaleDateString(undefined, {
-                      weekday: 'long',
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric'
-                    })}
-                  </span>
-                </div>
-              )}
+            const showDate = idx === 0 || (new Date(msg.createdAt).toDateString() !== new Date(messages[idx - 1]?.createdAt).toDateString());
 
-              <div className={`flex items-end gap-2 ${isMe ? "justify-end" : "justify-start"}`}>                  {/* MULTI-SELECT CHECKBOX */}
-                {(isSelectMode && isMe) && (
-                  <div
-                    onClick={() => toggleSelect(msg._id)}
-                    className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center cursor-pointer transition-all duration-200 mb-2 ${isSelected
-                      ? 'bg-gradient-to-r from-purple-500 to-blue-500 border-purple-500 shadow-md'
-                      : 'border-gray-600 hover:border-purple-400'
-                      }`}
-                  >
-                    {isSelected && <CheckCircle size={12} className="text-white" />}
+            return (
+              <div
+                key={msg._id ? msg._id.toString() : `temp-${msg.tempId}`}
+                className={`group relative transition-all duration-300 ${isSelected ? 'scale-[0.98]' : 'scale-100'}`}
+              >
+                {showDate && (
+                  <div className="text-center my-6">
+                    <span className="text-xs text-gray-500 bg-white/5 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/10">
+                      {new Date(msg.createdAt).toLocaleDateString(undefined, {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}
+                    </span>
                   </div>
                 )}
 
-                <div
-                  onContextMenu={(e) => {
-                    if (isMe) {
-                      e.preventDefault();
-                      enterSelectMode(msg._id);
-                    }
-                  }}
-                  onClick={() => {
-                    if (isSelectMode && isMe) toggleSelect(msg._id);
-                  }}
-                  className={`px-4 py-2.5 rounded-2xl relative shadow-md
-  ${msg.type === "file"
-                      ? "w-[320px] max-w-[320px]"           // ✅ fixed for files
-                      : "max-w-[75%] w-fit"                // ✅ flexible for text
-                    }
-  ${isMe
-                      ? `bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-br-sm ${isSelected ? "ring-2 ring-purple-400 ring-offset-2 ring-offset-[#0d0d0d]" : ""
-                      }`
-                      : "bg-white/5 backdrop-blur-sm text-white rounded-bl-sm border border-white/10"
-                    }
-`}
-                >
-                  {msg.type === "file" && (
-                    <div className="flex items-center gap-3 group/file">
-
-                      {/* FILE ICON */}
-                      <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center border border-white/10 group-hover/file:scale-105 transition">
-                        <File size={20} className="text-white/80" />
-                      </div>
-
-                      {/* FILE INFO */}
-                      <div className="flex-1 min-w-0">
-                        <div
-                          className="text-sm font-medium leading-tight text-white truncate"
-                          title={msg.file?.name}
-                        >
-                          {formatFileName(msg.file?.name).map((line, idx) => (
-                            <div key={idx}>{line}</div>
-                          ))}
-                        </div>
-
-                        <div className="flex items-center gap-2 text-xs text-gray-400 mt-1">
-                          <span>
-                            {msg.file?.size
-                              ? `${(msg.file.size / 1024 / 1024).toFixed(2)} MB`
-                              : "File"}
-                          </span>
-
-                          {/* DOT */}
-                          <span className="w-1 h-1 bg-gray-500 rounded-full"></span>
-
-                          <span className="uppercase text-[10px] tracking-wide">
-                            {msg.file?.mimeType?.split("/")[1] || "file"}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* ACTION BUTTON */}
-                      <button
-                        onClick={(e) => handleFileView(e, msg._id, msg.file)}
-                        className={`flex items-center justify-center w-9 h-9 rounded-lg transition-all duration-200
-    ${isCached
-                            ? "bg-green-500/20 text-green-400 hover:bg-green-500/30"
-                            : "bg-white/10 text-gray-300 hover:bg-white/20"
-                          }
-  `}
-                        title={isCached ? "Open file" : "Download file"}
-                      >
-                        {isCached ? <Eye size={16} /> : <Download size={16} />}
-                      </button>
+                <div className={`flex items-end gap-2 ${isMe ? "flex-row-reverse" : "flex-row"}`}>
+                  {/* MULTI-SELECT CHECKBOX */}
+                  {(isSelectMode && isMe) && (
+                    <div
+                      onClick={() => toggleSelect(msg._id)}
+                      className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center cursor-pointer transition-all duration-200 mb-2 ${isSelected
+                        ? 'bg-gradient-to-r from-purple-500 to-blue-500 border-purple-500 shadow-md'
+                        : 'border-gray-600 hover:border-purple-400'
+                        }`}
+                    >
+                      {isSelected && <CheckCircle size={12} className="text-white" />}
                     </div>
                   )}
-                  {(!msg.type || msg.type === "text") && (
-                    <p className="text-sm text-white break-words leading-relaxed">
-                      {msg.content}
-                    </p>
-                  )}
 
+                  <div
+                    onContextMenu={(e) => {
+                      if (isMe) {
+                        e.preventDefault();
+                        enterSelectMode(msg._id);
+                      }
+                    }}
+                    onClick={() => {
+                      if (isSelectMode && isMe) toggleSelect(msg._id);
+                    }}
+                    className={`px-4 py-2.5 rounded-2xl max-w-[70%] relative cursor-default transition-all duration-300 shadow-md ${isMe
+                      ? `bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-br-sm ${isSelected ? 'ring-2 ring-purple-400 ring-offset-2 ring-offset-[#0d0d0d]' : ''
+                      }`
+                      : "bg-white/5 backdrop-blur-sm text-white rounded-bl-sm border border-white/10"
+                      } ${isDeleting && isSelected ? 'animate-fade-out' : ''}`}
+                  >
+                    {msg.type === "file" ? (
+                      <div className="flex items-center gap-3 group/file">
+                        <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center group-hover/file:bg-white/20 transition">
+                          <File size={20} className="text-gray-300" />
+                        </div>
+                        <div
+                          className="flex-1 cursor-pointer"
+                          onClick={(e) => handleFileView(e, msg._id, msg.file, msg)}
+                        >
+                          <p className="text-sm font-medium leading-tight line-clamp-2 break-words">
+                            {msg.file?.name || "File"}
+                          </p>
+                          <p className="text-xs opacity-70">
+                            {msg.file?.size ? `${(msg.file.size / 1024 / 1024).toFixed(2)} MB` : 'File'}
+                          </p>
+                        </div>
 
-                  <div className="flex items-center justify-end gap-1 mt-1.5 text-[10px] opacity-70">
-                    <span>{msg.createdAt ? formatTime(msg.createdAt) : ""}</span>
-                    {isMe && msg.status && (
-                      <span className="flex items-center gap-1 ml-1">
-                        {getMessageStatusUI(msg.status)}
-                      </span>
+                        {/* ✅ BOTH SENDER & RECEIVER: Show View button (uses IndexedDB cache) */}
+                        <button
+                          onClick={(e) => handleFileView(e, msg._id, msg.file, msg)}
+                          className="flex-shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-white transition-all transform hover:scale-105 flex items-center gap-1.5"
+                          title={isMe ? "View file locally" : "View file (cached locally after first load)"}
+                        >
+                          <span className="text-[14px]">{isMe ? "👁️" : "⬇️"}</span>
+                          <span>{isMe ? "View" : "View/Download"}</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
+                        {msg.content}
+                      </p>
                     )}
+
+                    <div className="flex items-center justify-end gap-1 mt-1.5 text-[10px] opacity-70">
+                      <span>{msg.createdAt ? formatTime(msg.createdAt) : ""}</span>
+                      {isMe && msg.status && (
+                        <span className="flex items-center gap-1 ml-1">
+                          {getMessageStatusUI(msg.status)}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          );
-        })
-      )}
+            );
+          })
+        )}
 
         {/* TYPING INDICATOR */}
         {typing && typing.userId !== me?._id && otherUser && (
@@ -669,7 +728,7 @@ const Messages = ({
       </div>
 
       {/* INPUT AREA */}
-      <div className={`p-4 border-t border-white/10 bg-white/5 backdrop-blur-sm transition-transform duration-300 ${isSelectMode ? 'translate-y-full' : 'translate-y-0'}`}>
+      <div className={`p-4 border-t border-white/10 bg-white/5 backdrop-blur-sm transition-all duration-300 ${isSelectMode ? 'translate-y-full' : 'translate-y-0'}`}>
         <div className="flex gap-2 items-end">
           {/* FILE BUTTON */}
           <button
@@ -762,4 +821,4 @@ const Messages = ({
   );
 };
 
-export default Messages; 
+export default Messages;

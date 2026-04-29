@@ -493,10 +493,8 @@ export const useChat = () => {
       setMessages(prev =>
         prev.map(msg => {
           if (msg.tempId === tempId) {
-
-
-
-            return { ...message, status: "sent" };
+            // ✅ Use status from server instead of hardcoding "sent"
+            return { ...message, status: message.status || "sent" };
           }
           return msg;
         })
@@ -522,25 +520,44 @@ export const useChat = () => {
       setMessages(prev => {
         let updateCount = 0;
         const updated = prev.map(m => {
-          // ✅ Only mark as seen if currently "sent" or "delivered"
-          // Don't mark as seen if still "sending"
-          if (m.chatId === chatId && messageIds.includes(m._id) &&
-            (m.status === "sent" || m.status === "delivered")) {
+          // ✅ Robust ID comparison (handle string vs object)
+          const mIdStr = m._id?.toString();
+          const isTargetMessage = messageIds.some(id => id.toString() === mIdStr);
+
+          // ✅ Mark as seen if it's in the list and current status is not already "seen"
+          // We allow "sent", "delivered", and even "sending" (though rare) to be updated to "seen"
+          if (m.chatId?.toString() === chatId?.toString() && isTargetMessage && m.status !== "seen") {
             updateCount++;
-            console.log("[useChat] ✅ Message marked seen:", m._id);
+            console.log("[useChat] ✅ Message marked seen:", mIdStr, "Type:", m.type);
             return { ...m, status: "seen" };
           }
           return m;
         });
 
-        console.log("[useChat] Total messages marked seen in this batch:", updateCount, "/", messageIds.length);
+        if (updateCount > 0) {
+          console.log("[useChat] Total messages marked seen in this batch:", updateCount, "/", messageIds.length);
+        }
         return updated;
       });
     };
 
     socket.on("messages-seen", handleSeen);
 
-    return () => socket.off("messages-seen", handleSeen);
+    const handleStatusUpdate = ({ messageId, status }) => {
+      console.log("[useChat] 📥 Received message-status-update", { messageId, status });
+      setMessages(prev =>
+        prev.map(m =>
+          m._id?.toString() === messageId?.toString() ? { ...m, status } : m
+        )
+      );
+    };
+
+    socket.on("message-status-update", handleStatusUpdate);
+
+    return () => {
+      socket.off("messages-seen", handleSeen);
+      socket.off("message-status-update", handleStatusUpdate);
+    };
   }, [me]);
 
   /* ───────── SOCKET: TYPING ───────── */
@@ -638,7 +655,7 @@ export const useChat = () => {
       formData.append("file", file);
       formData.append("tempId", tempId);
 
-      await apiClient.post(
+      const res = await apiClient.post(
         `/chats/${selectedChat._id}/file`,
         formData,
         {
@@ -646,6 +663,16 @@ export const useChat = () => {
           timeout: 120000,
         }
       );
+
+      // ✅ Update message with real data from server response immediately
+      if (res.data?.success && res.data.message) {
+        const serverMsg = res.data.message;
+        setMessages(prev =>
+          prev.map(m =>
+            m.tempId === tempId ? { ...serverMsg, status: serverMsg.status || "sent" } : m
+          )
+        );
+      }
 
     } catch (err) {
       setMessages(prev =>

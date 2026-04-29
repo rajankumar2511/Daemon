@@ -166,7 +166,7 @@ const Sidebar = ({ me, isMobile = false, onClose = null }) => {
       </div>
 
       {/* Background Effects */}
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style>{`
         @keyframes slideIn {
           from {
             transform: translateX(-100%);
@@ -181,7 +181,7 @@ const Sidebar = ({ me, isMobile = false, onClose = null }) => {
         div:first-child {
           animation: slideIn 0.4s ease-out;
         }
-      ` }} />
+      `}</style>
     </div>
   );
 };

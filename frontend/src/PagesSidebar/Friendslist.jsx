@@ -148,7 +148,7 @@ const FriendsList = ({ onFriendSelect, searchQuery, setSearchQuery }) => {
         )}
       </div>
 
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style >{`
         .custom-scrollbar::-webkit-scrollbar {
           width: 4px;
         }
@@ -166,7 +166,7 @@ const FriendsList = ({ onFriendSelect, searchQuery, setSearchQuery }) => {
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
           background: rgba(139, 92, 246, 0.8);
         }
-      ` }} />
+      `}</style>
     </div>
   );
 };
