@@ -1,6 +1,5 @@
-
-
-
+import dotenv from "dotenv";
+dotenv.config({ quiet: true });
 import express from "express";
 import authRoutes from "./src/routes/authRoutes.js";
 import friendRoutes from "./src/routes/friendreq.js";
