@@ -1,7 +1,5 @@
-import dotenv from "dotenv";
 
-// ✅ Load env (works both locally + production)
-dotenv.config();
+
 
 import express from "express";
 import authRoutes from "./src/routes/authRoutes.js";

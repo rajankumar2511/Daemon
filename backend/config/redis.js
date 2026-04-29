@@ -1,10 +1,24 @@
 import Redis from "ioredis";
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// go from config/ → backend/
+dotenv.config({
+  path: path.resolve(__dirname, "../.env"),
+  quiet: true,
+});
 // ─────────────────────────────────────────────
 // ENV
 // ─────────────────────────────────────────────
+if (!process.env.REDIS_URL) {
+  throw new Error("❌ REDIS_URL is not defined in environment variables");
+}
 
-const REDIS_URL = process.env.REDIS_URL || "redis://127.0.0.1:6379";
+const REDIS_URL = process.env.REDIS_URL;
 
 // ─────────────────────────────────────────────
 // RETRY STRATEGY

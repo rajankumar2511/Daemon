@@ -4,11 +4,7 @@ dotenv.config();
 import { v2 as cloudinary } from "cloudinary";
 import streamifier from "streamifier";
 
-console.log("🔥 CLOUDINARY ENV CHECK:", {
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME ? "✅ FOUND" : "❌ MISSING",
-  api_key: process.env.CLOUDINARY_API_KEY ? "✅ FOUND" : "❌ MISSING",
-  api_secret: process.env.CLOUDINARY_API_SECRET ? "✅ FOUND" : "❌ MISSING",
-});
+
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,

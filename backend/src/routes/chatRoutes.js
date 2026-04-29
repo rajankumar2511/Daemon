@@ -13,7 +13,6 @@ import {
 } from "../controllers/chat.controller.js";
 
 const router = express.Router();
-console.log("🔥 chatRoutes loaded");
 
 // ✅ CRITICAL: specific routes MUST come before param routes.
 // Without this, GET /chats/abc123/messages matches /:friendId first
