@@ -3,6 +3,6 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "cd backend && node src/workers/message.worker.js"
+    "startCommand": "node src/workers/message.worker.js"
   }
 }
